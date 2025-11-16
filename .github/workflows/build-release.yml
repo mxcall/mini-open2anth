@@ -19,7 +19,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.8'
 
     - name: Cache pip dependencies
       uses: actions/cache@v4
@@ -37,16 +37,38 @@ jobs:
 
     - name: Build executable
       run: |
-        # 使用PowerShell脚本进行构建
-        pwsh build.ps1
-      env:
-        CI: true
+        # 清理之前的构建文件
+        if (Test-Path "build") { Remove-Item -Recurse -Force build }
+        if (Test-Path "dist") { Remove-Item -Recurse -Force dist }
+
+        # 使用PyInstaller构建
+        pyinstaller build.spec --clean
+
+        # 准备发布文件
+        mkdir release -Force
+        Copy-Item "dist\mini-open2anth.exe" "release\mini-open2anth.exe" -Force
+
+        # 复制配置文件
+        if (Test-Path ".env.example") {
+          Copy-Item ".env.example" "release\.env.example" -Force
+        }
+        if (Test-Path ".env") {
+          Copy-Item ".env" "release\.env" -Force
+        }
+
+        # 显示构建结果
+        Get-ChildItem release | Format-Table Name, Length -AutoSize
 
     - name: Get version
       id: version
       run: |
         # 从 pyproject.toml 提取版本号
-        $version = (Select-String -Path pyproject.toml -Pattern 'version = "([^"]+)"').Matches[1].Groups[1].Value
+        $content = Get-Content pyproject.toml -Raw
+        if ($content -match 'version\s*=\s*"([^"]+)"') {
+          $version = $matches[1]
+        } else {
+          $version = "0.1.0"
+        }
         echo "VERSION=$version" >> $env:GITHUB_OUTPUT
         echo "Version extracted: $version"
 

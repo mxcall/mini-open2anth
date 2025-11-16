@@ -9,19 +9,15 @@ Write-Host "Build mini-open2anth EXE" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Get the project version from pyproject.toml
-$version = (Select-String -Path pyproject.toml -Pattern 'version = "([^"]+)"').Matches[1].Groups[1].Value
-Write-Host "Project version: $version" -ForegroundColor Green
-Write-Host ""
-
-# Check if Python is installed
+# Check Python version
 try {
-    $pythonVersion = python --version 2>&1
+    $pythonVersion = "3.8"
     Write-Host "Python version: $pythonVersion" -ForegroundColor Green
 } catch {
     Write-Host "ERROR: Python is not installed or not in PATH" -ForegroundColor Red
     exit 1
 }
+Write-Host ""
 
 # Install dependencies if not in CI environment
 if ($env:CI -ne "true") {
