@@ -105,6 +105,7 @@ jobs:
         name: mini-open2anth-windows-${{ steps.version.outputs.VERSION }}
         path: release/
         retention-days: 30
+        include-hidden-files: true
 
   create-release:
     name: Create GitHub Release
