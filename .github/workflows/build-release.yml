@@ -1,0 +1,113 @@
+name: Build and Release
+
+on:
+  push:
+    # 当推送带标签的提交时触发（格式：v*.*.*）
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-windows:
+    name: Build on Windows
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~\AppData\Local\pip\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Install project
+      run: pip install -e .
+
+    - name: Build executable
+      run: |
+        # 使用PowerShell脚本进行构建
+        pwsh build.ps1
+
+      env:
+        CI: true
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: mini-open2anth-windows-${{ env.VERSION }}
+        path: release/
+        retention-days: 30
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: mini-open2anth-windows-${{ env.VERSION }}
+        path: release/
+
+    - name: Get version from tag
+      id: tag
+      run: |
+        # 从标签中提取版本号（去掉 'v' 前缀）
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ steps.tag.outputs.VERSION }}
+        body: |
+          ## Changes in this Release
+
+          🎉 This is an automated release containing the Windows executable for **mini-open2anth**.
+
+          ### 📦 What's Included
+
+          - `mini-open2anth.exe` - Windows executable file
+
+          ### 🚀 How to Use
+
+          1. Download and run `mini-open2anth.exe`
+          2. Make sure you have a `.env` configuration file in the same directory
+          3. Or copy `.env.example` to `.env` and modify the configuration
+
+          ### 📝 Notes
+
+          - This is a single-file executable with all dependencies included
+          - Built with PyInstaller on Windows
+
+          ---
+          **Built with ❤️ by GitHub Actions**
+
+        files: |
+          release/mini-open2anth.exe
+          release/.env.example
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
