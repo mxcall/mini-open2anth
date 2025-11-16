@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.vscode
+.qoder
+
+uploads/*
+!uploads/
+
+build/*
+!build/
+
+dist/uploads
+dist/mini-chrome-plugin/
+dist/*
+
+.claude/
