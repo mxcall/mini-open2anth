@@ -20,3 +20,5 @@ dist/mini-chrome-plugin/
 dist/*
 
 .claude/
+
+build/

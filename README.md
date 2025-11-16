@@ -23,7 +23,7 @@
 ### 1. 创建虚拟环境
 
 ```bash
-uv venv --python 3.8.20 .venv
+uv venv --python=3.8.20 --seed .venv
 ```
 
 ### 2. 安装依赖
