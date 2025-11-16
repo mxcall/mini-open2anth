@@ -22,7 +22,7 @@ async def test_normal_request():
         async with session.post(
             "http://localhost:8000/v1/messages",
             json={
-                "model": "gpt-3.5-turbo",
+                "model": "claude-3-5-sonnet-20241022",  # 会自动映射到 qwen-max-latest
                 "max_tokens": 100,
                 "stream": False,
                 "messages": [
@@ -39,18 +39,24 @@ async def test_normal_request():
             }
         ) as response:
             result = await response.json()
+            print("\n响应结果:")
             print(json.dumps(result, indent=2, ensure_ascii=False))
+            
+            # 检查模型是否映射成功
+            if result.get("model") == "qwen-max-latest":
+                print("\n✅ 模型映射成功: qwen-max-latest")
+            
             return response.status == 200
 
 
 async def test_stream_request():
-    """测试流式请求"""
+    """测试流式请求（包括思考内容）"""
     print("\n=== 测试流式请求 ===")
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "http://localhost:8000/v1/messages",
             json={
-                "model": "gpt-3.5-turbo",
+                "model": "claude-3-5-sonnet-20241022",  # 会自动映射到 qwen-max-latest
                 "max_tokens": 200,
                 "stream": True,
                 "messages": [
@@ -66,22 +72,53 @@ async def test_stream_request():
                 ]
             }
         ) as response:
-            print("流式响应:")
+            print("\n流式响应:")
+            
+            thinking_content = []
+            text_content = []
+            has_thinking = False
+            
             async for line in response.content:
                 line = line.decode('utf-8').strip()
                 if line.startswith('data: '):
                     data = line[6:]
                     if data == '[DONE]':
-                        print("\n=== 流式响应完成 ===")
+                        print("\n\n=== 流式响应完成 ===")
                         break
                     try:
                         parsed = json.loads(data)
-                        if parsed.get('type') == 'content_block_delta':
+                        event_type = parsed.get('type')
+                        
+                        # 处理思考内容
+                        if event_type == 'content_block_start':
+                            block = parsed.get('content_block', {})
+                            if block.get('type') == 'thinking':
+                                has_thinking = True
+                                print("\n[思考内容]: ", end='', flush=True)
+                        
+                        elif event_type == 'content_block_delta':
                             delta = parsed.get('delta', {})
-                            if 'text' in delta:
-                                print(delta['text'], end='', flush=True)
+                            
+                            # 思考内容增量
+                            if delta.get('type') == 'thinking_delta':
+                                thinking_text = delta.get('thinking', '')
+                                thinking_content.append(thinking_text)
+                                print(thinking_text, end='', flush=True)
+                            
+                            # 普通文本增量
+                            elif delta.get('type') == 'text_delta':
+                                text = delta.get('text', '')
+                                text_content.append(text)
+                                if not text_content or len(text_content) == 1:
+                                    print("\n[回答内容]: ", end='', flush=True)
+                                print(text, end='', flush=True)
+                        
                     except json.JSONDecodeError:
                         pass
+            
+            if has_thinking:
+                print("\n\n✅ 检测到思考内容(thinking)")
+            
             return True
 
 

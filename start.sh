@@ -24,8 +24,14 @@ if [ ! -f ".env" ]; then
 fi
 
 # 显示配置信息
+echo "配置信息:"
 echo "OpenAI API URL: ${OPENAI_API_URL:-未配置}"
-echo "OpenAI API Key: ${OPENAI_API_KEY:+已配置}"
+if [ -n "$OPENAI_API_KEY" ]; then
+    echo "OpenAI API Key: 已配置"
+else
+    echo "OpenAI API Key: 未配置"
+fi
+echo ""
 echo "Python版本: $(python --version)"
 echo ""
 
@@ -33,7 +39,11 @@ echo ""
 echo "启动服务..."
 echo "服务地址: http://localhost:8000"
 echo "健康检查: http://localhost:8000/health"
+echo "API文档: http://localhost:8000/docs"
 echo "API端点: http://localhost:8000/v1/messages"
+echo ""
+echo "模型映射: 所有模型统一映射到 qwen-max-latest"
+echo "支持功能: 流式响应、思考内容(thinking)、UTF-8编码"
 echo ""
 echo "按 Ctrl+C 停止服务"
 echo ""

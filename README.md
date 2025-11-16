@@ -6,9 +6,11 @@
 
 - ✅ 将Anthropic API格式转换为OpenAI API格式
 - ✅ 支持流式响应（SSE格式）
-- ✅ 支持思考（thinking）功能转换
+- ✅ 支持思考（thinking）功能转换（reasoning_content字段）
 - ✅ 自动处理消息格式转换
 - ✅ 支持所有常用参数（temperature、max_tokens等）
+- ✅ 固定模型映射：所有Anthropic模型统一映射到 qwen-max-latest
+- ✅ 完善的UTF-8编码支持
 - ✅ 健康检查端点
 
 ## 环境要求
@@ -27,7 +29,7 @@ uv venv --python 3.8.20 .venv
 ### 2. 安装依赖
 
 ```bash
-uv pip install fastapi uvicorn httpx pydantic
+uv pip install fastapi uvicorn httpx python-dotenv
 ```
 
 ### 3. 配置API
@@ -76,7 +78,7 @@ POST /v1/messages
 
 ```json
 {
-  "model": "gpt-3.5-turbo",
+  "model": "claude-3-5-sonnet-20241022",
   "max_tokens": 1024,
   "stream": false,
   "messages": [
@@ -93,11 +95,14 @@ POST /v1/messages
 }
 ```
 
-### 流式请求示例
+**注意**：无论请求中使用什么模型名称（如 `claude-3-5-sonnet-20241022`、`gpt-3.5-turbo` 等），服务都会自动映射到 `qwen-max-latest` 模型。
+```
+
+### 流式请求示例（支持思考功能）
 
 ```json
 {
-  "model": "gpt-3.5-turbo",
+  "model": "claude-3-5-sonnet-20241022",
   "max_tokens": 1024,
   "stream": true,
   "messages": [
@@ -116,6 +121,7 @@ POST /v1/messages
 
 ### 响应示例（Anthropic格式）
 
+**普通响应：**
 ```json
 {
   "id": "msg_xxx",
@@ -127,7 +133,7 @@ POST /v1/messages
       "text": "你好！我是AI助手..."
     }
   ],
-  "model": "gpt-3.5-turbo",
+  "model": "qwen-max-latest",
   "stop_reason": "end_turn",
   "usage": {
     "input_tokens": 10,
@@ -136,20 +142,52 @@ POST /v1/messages
 }
 ```
 
+**带思考内容的响应：**
+```json
+{
+  "id": "msg_xxx",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "让我思考一下如何回答..."
+    },
+    {
+      "type": "text",
+      "text": "根据思考，我的回答是..."
+    }
+  ],
+  "model": "qwen-max-latest",
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 10,
+    "output_tokens": 25
+  }
+}
+```
+
 ### 流式响应格式
 
-服务返回SSE格式的流式数据，每个事件都以`data: `开头：
+服务返回SSE格式的流式数据，每个事件都以`data: `开头。支持思考内容（thinking）和普通内容（text）的流式输出：
 
+**带思考内容的流式响应：**
 ```
 data: {"type": "message_start", "message": {...}}
 
-data: {"type": "content_block_start", "index": 0, "content_block": {...}}
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}}
 
-data: {"type": "content_block_delta", "index": 0, "delta": {...}}
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "思考内容..."}}
 
 data: {"type": "content_block_stop", "index": 0}
 
-data: {"type": "message_delta", "delta": {...}}
+data: {"type": "content_block_start", "index": 1, "content_block": {"type": "text", "text": ""}}
+
+data: {"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": "回答内容..."}}
+
+data: {"type": "content_block_stop", "index": 1}
+
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}}
 
 data: [DONE]
 ```
@@ -168,7 +206,7 @@ data: [DONE]
 curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-3.5-turbo",
+    "model": "claude-3-5-sonnet-20241022",
     "messages": [
       {
         "role": "user",
@@ -189,7 +227,7 @@ curl -X POST http://localhost:8000/v1/messages \
 curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-3.5-turbo",
+    "model": "claude-3-5-sonnet-20241022",
     "stream": true,
     "messages": [
       {
@@ -205,13 +243,21 @@ curl -X POST http://localhost:8000/v1/messages \
   }'
 ```
 
+使用Python测试客户端：
+
+```bash
+python test_client.py
+```
+
 ## 注意事项
 
 1. 确保`.env`文件中的API URL和密钥配置正确
 2. 服务默认运行在8000端口，可通过环境变量`PORT`修改
 3. 流式请求使用Server-Sent Events (SSE)格式
-4. 思考（thinking）功能会转换为文本块处理
-5. 消息格式会自动在Anthropic和OpenAI之间转换
+4. **模型映射**：所有Anthropic模型名称（如 `claude-3-5-sonnet-20241022`）都会自动映射到 `qwen-max-latest`
+5. **思考功能**：支持OpenAI的 `reasoning_content` 字段，会转换为Anthropic格式的 `thinking` 类型内容块
+6. 消息格式会自动在Anthropic和OpenAI之间转换
+7. 所有响应都使用UTF-8编码，支持中文等多语言字符
 
 ## 许可证
 
