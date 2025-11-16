@@ -1,6 +1,9 @@
 # PowerShell script for building mini-open2anth on Windows
 # This script is optimized for GitHub Actions and CI/CD environments
 
+# Enable strict error handling
+$ErrorActionPreference = "Stop"
+
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Build mini-open2anth EXE" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan

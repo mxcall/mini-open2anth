@@ -35,21 +35,25 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Install project
-      run: pip install -e .
-
     - name: Build executable
       run: |
         # 使用PowerShell脚本进行构建
         pwsh build.ps1
-
       env:
         CI: true
+
+    - name: Get version
+      id: version
+      run: |
+        # 从 pyproject.toml 提取版本号
+        $version = (Select-String -Path pyproject.toml -Pattern 'version = "([^"]+)"').Matches[1].Groups[1].Value
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version extracted: $version"
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: mini-open2anth-windows-${{ env.VERSION }}
+        name: mini-open2anth-windows-${{ steps.version.outputs.VERSION }}
         path: release/
         retention-days: 30
 
@@ -63,18 +67,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: mini-open2anth-windows-${{ env.VERSION }}
-        path: release/
-
     - name: Get version from tag
       id: tag
       run: |
         # 从标签中提取版本号（去掉 'v' 前缀）
         VERSION=${GITHUB_REF#refs/tags/v}
         echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: mini-open2anth-windows-${{ steps.tag.outputs.VERSION }}
+        path: release/
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
