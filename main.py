@@ -20,6 +20,22 @@ load_dotenv()
 # 从环境变量获取OpenAI配置
 OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+DEFAULT_OPENAI_MODEL = os.getenv("DEFAULT_OPENAI_MODEL", "qwen-max-latest")
+
+# 解析模型映射配置
+def parse_model_mapping() -> Dict[str, str]:
+    """解析MODEL_MAPPING环境变量为字典"""
+    mapping_str = os.getenv("MODEL_MAPPING", "")
+    mapping = {}
+    if mapping_str:
+        for pair in mapping_str.split(";"):
+            pair = pair.strip()
+            if "=" in pair:
+                key, value = pair.split("=", 1)
+                mapping[key.strip()] = value.strip()
+    return mapping
+
+MODEL_MAPPING = parse_model_mapping()
 
 app = FastAPI(title="Anthropic to OpenAI Proxy")
 
@@ -82,9 +98,14 @@ class AnthropicToOpenAIConverter:
     @staticmethod
     def convert_request(anthropic_request: Dict[str, Any]) -> Dict[str, Any]:
         """将完整的Anthropic请求转换为OpenAI请求"""
-        # 固定模型映射：所有Anthropic模型都映射到 qwen-max-latest
-        FIXED_MODEL = "qwen-max-latest"
-        model = FIXED_MODEL
+        # 获取用户请求的模型
+        requested_model = anthropic_request.get("model", "")
+        
+        # 根据模型映射转换，如果没有映射则使用默认模型
+        if requested_model in MODEL_MAPPING:
+            model = MODEL_MAPPING[requested_model]
+        else:
+            model = DEFAULT_OPENAI_MODEL
 
         # 转换消息
         messages = AnthropicToOpenAIConverter.convert_messages(
@@ -157,14 +178,14 @@ class OpenAIToAnthropicConverter:
         return anthropic_chunk
 
     @staticmethod
-    def convert_response(openai_response: Dict[str, Any]) -> Dict[str, Any]:
+    def convert_response(openai_response: Dict[str, Any], original_model: str = "unknown") -> Dict[str, Any]:
         """转换完整的OpenAI响应为Anthropic格式"""
         anthropic_response = {
             "id": openai_response.get("id", "msg_xxx"),
             "type": "message",
             "role": "assistant",
             "content": [],
-            "model": openai_response.get("model", "unknown"),
+            "model": original_model,
             "stop_reason": None,
             "stop_sequence": None,
             "usage": {
@@ -201,7 +222,8 @@ class OpenAIToAnthropicConverter:
 
 
 async def stream_openai_response(
-    openai_request: Dict[str, Any]
+    openai_request: Dict[str, Any],
+    original_model: str
 ) -> AsyncGenerator[str, None]:
     """流式传输OpenAI响应并转换为Anthropic格式"""
     try:
@@ -223,7 +245,7 @@ async def stream_openai_response(
                         "type": "message",
                         "role": "assistant",
                         "content": [],
-                        "model": openai_request.get("model", "unknown"),
+                        "model": original_model,
                         "stop_reason": None,
                         "stop_sequence": None,
                         "usage": {
@@ -388,6 +410,15 @@ async def anthropic_messages_endpoint(request: Request):
     try:
         # 解析请求体
         anthropic_request = await request.json()
+        
+        # 打印接收到的请求信息
+        print("\n" + "="*80)
+        print("[接收到的Anthropic API请求]")
+        print(f"请求URL: {request.url}")
+        print(f"请求方法: {request.method}")
+        print("请求内容:")
+        print(json.dumps(anthropic_request, ensure_ascii=False, indent=2))
+        print("="*80 + "\n")
 
         # 检查API key
         if not OPENAI_API_KEY:
@@ -396,14 +427,27 @@ async def anthropic_messages_endpoint(request: Request):
                 detail="OpenAI API key not configured"
             )
 
+        # 保存用户请求的原始模型
+        original_model = anthropic_request.get("model", "unknown")
+        
         # 转换为OpenAI格式
         openai_request = AnthropicToOpenAIConverter.convert_request(anthropic_request)
+        
+        # 打印转换后的OpenAI请求信息
+        openai_url = f"{OPENAI_API_URL}/chat/completions"
+        print("\n" + "="*80)
+        print("[转换后的OpenAI API请求]")
+        print(f"请求URL: {openai_url}")
+        print(f"请求方法: POST")
+        print("请求内容:")
+        print(json.dumps(openai_request, ensure_ascii=False, indent=2))
+        print("="*80 + "\n")
 
         # 检查是否为流式请求
         if anthropic_request.get("stream", False):
             # 流式响应
             return StreamingResponse(
-                stream_openai_response(openai_request),
+                stream_openai_response(openai_request, original_model),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -445,7 +489,7 @@ async def anthropic_messages_endpoint(request: Request):
                             detail=f"Failed to decode OpenAI response: {str(e2)}"
                         )
                 
-                anthropic_data = OpenAIToAnthropicConverter.convert_response(openai_data)
+                anthropic_data = OpenAIToAnthropicConverter.convert_response(openai_data, original_model)
 
                 return JSONResponse(anthropic_data, media_type="application/json; charset=utf-8")
 
@@ -474,6 +518,10 @@ if __name__ == "__main__":
     print("Starting Anthropic to OpenAI Proxy Server...")
     print(f"OpenAI API URL: {OPENAI_API_URL}")
     print(f"OpenAI API Key configured: {bool(OPENAI_API_KEY)}")
-    print(f"Fixed Model Mapping: ALL -> qwen-max-latest")
+    print(f"Default OpenAI Model: {DEFAULT_OPENAI_MODEL}")
+    if MODEL_MAPPING:
+        print(f"Model Mapping: {MODEL_MAPPING}")
+    else:
+        print("Model Mapping: Not configured (using default model for all requests)")
     print(f"Service Port: {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
